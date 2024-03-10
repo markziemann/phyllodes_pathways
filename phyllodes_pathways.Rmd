@@ -283,13 +283,13 @@ Make a html report and some charts.
 
 ```{r,reports}
 
-mitch_report(res=mres1,outfile="reactome_mitchreport.html",overwrite=false)
+mitch_report(res=mres1,outfile="reactome_mitchreport.html",overwrite=TRUE)
 mitch_plots(res=mres1,outfile="reactome_mitchcharts.pdf")
 
-mitch_report(res=mres2,outfile="gobp_mitchreport.html",overwrite=false)
+mitch_report(res=mres2,outfile="gobp_mitchreport.html",overwrite=TRUE)
 mitch_plots(res=mres2,outfile="gobp_mitchcharts.pdf")
 
-mitch_report(res=mres3,outfile="tft_mitchreport.html",overwrite=false)
+mitch_report(res=mres3,outfile="tft_mitchreport.html",overwrite=TRUE)
 mitch_plots(res=mres3,outfile="tft_mitchcharts.pdf")
 
 ```
