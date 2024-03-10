@@ -9,8 +9,6 @@ output:
     fig_width: 7
     fig_height: 7
 theme: cosmo
-bibliography: references.bib
-csl: epigenetics.csl
 ---
 
 ## Introduction
@@ -29,7 +27,7 @@ targets from MsigDB.
 Load packages.
 
 Important: ensure that the mitch version used is 1.15.0 (patched), 1.15.1 or higher.
-This was generated using mitch 1.15.0 (patched).
+# devtools::install_github("markziemann/mitch") #get devel mitch
 
 ```{r,packages}
 
