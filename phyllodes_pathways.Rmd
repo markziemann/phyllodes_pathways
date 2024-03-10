@@ -1,0 +1,299 @@
+---
+title: "Using mitch package for Infinium methylation analysis of phyllodes methylation"
+author: "The GMEA team"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    fig_width: 7
+    fig_height: 7
+theme: cosmo
+bibliography: references.bib
+csl: epigenetics.csl
+---
+
+## Introduction
+
+Here we are comparing non-malignant vs malignant phyllodes samples.
+
+Data provided by Prof Ruth Pidsley's team.
+
+Source code: https://github.com/markziemann/phyllodes_pathways
+
+Gene set information provided by Reactome, Gene Ontology, and transcription factor
+targets from MsigDB.
+
+## Requirements
+
+Load packages.
+
+Important: ensure that the mitch version used is 1.15.0 (patched), 1.15.1 or higher.
+This was generated using mitch 1.15.0 (patched).
+
+```{r,packages}
+
+suppressPackageStartupMessages({
+  library("limma")
+  library("eulerr")
+  library("IlluminaHumanMethylation450kanno.ilmn12.hg19")
+  library("IlluminaHumanMethylationEPICanno.ilm10b4.hg19")
+  library("HGNChelper")
+  library("tictoc")
+  library("mitch")
+  library("kableExtra")
+  library("beeswarm")
+  library("missMethyl")
+  library("gridExtra")
+  library("png")
+})
+
+```
+
+## Load methylation data
+
+The limma results are read in.
+Results from Meyer et al (PMID:38300122).
+
+```{r,loaddata}
+
+dm <- read.csv("Phyllodes_topTable.csv.gz",header=TRUE,row.names=1)
+
+dim(dm)
+
+head(dm)
+
+```
+
+Note that this object has probes with their own column, not simply as row names.
+
+## Load pathways
+
+```{r,loadpathways}
+
+reactome <- gmt_import("ReactomePathways_2024-03-10.gmt")
+
+gobp <- gmt_import("c5.go.v2023.2.Hs.symbols.gmt")
+
+tft <- gmt_import("c3.tft.gtrd.v2023.2.Hs.symbols.gmt")
+
+```
+
+## Curate the annotation
+
+Curate the table which matches probes to gene names.
+
+It is important to update defunct gene symbols.
+
+```{r,anno1}
+
+tic()
+anno <- getAnnotation(IlluminaHumanMethylationEPICanno.ilm10b4.hg19)
+myann <- data.frame(anno[,c("UCSC_RefGene_Name","UCSC_RefGene_Group","Islands_Name","Relation_to_Island")])
+gp <- myann[,"UCSC_RefGene_Name",drop=FALSE]
+gp2 <- strsplit(gp$UCSC_RefGene_Name,";")
+names(gp2) <- rownames(gp)
+gp2 <- lapply(gp2,unique)
+gt <- stack(gp2)
+colnames(gt) <- c("gene","probe")
+gt$probe <- as.character(gt$probe)
+dim(gt)
+str(gt)
+toc() #9.0s
+
+tic()
+#new.hgnc.table <- getCurrentHumanMap()
+new.hgnc.table <- readRDS("new.hgnc.table.rds")
+fix <- checkGeneSymbols(gt$gene,map=new.hgnc.table)
+fix2 <- fix[which(fix$x != fix$Suggested.Symbol),]
+length(unique(fix2$x))
+gt$gene <- fix$Suggested.Symbol
+toc()
+
+head(gt)
+str(gt)
+
+```
+
+## Mitch pipeline
+
+The first part is to import the data into mitch.
+
+This only works properly when mitch's mapGeneIds function uses `mean` to aggregate (line 69 of mitch.R).
+
+```{r,mg1}
+
+m <- mitch_import(x=dm,DEtype="limma",geneTable=gt)
+
+head(m) %>%
+  kbl(caption = "Differential gene methylation scores used for pathway analysis") %>%
+  kable_paper("hover", full_width = F)
+
+```
+
+Now run the enrichment analysis.
+
+Note that the results are not sorted by p-value, rather S.distance, an enrichment score.
+I think this works better for interpretation.
+
+### Reactome
+
+Reactome is the first analysis.
+
+```{r,reactome1}
+
+mres1 <- mitch_calc(x=m,genesets=reactome,minsetsize=5, priority="effect",cores=8)
+
+mtable1 <- mres1$enrichment_result
+up <- subset(mtable1,s.dist>0 & p.adjustANOVA<0.05)
+dn <- subset(mtable1,s.dist<0 & p.adjustANOVA<0.05)
+nrow(up)
+nrow(dn)
+
+head(up,10) %>%
+  kbl(caption = "Top significant pathways with higher methylation") %>%
+  kable_paper("hover", full_width = F)
+
+head(dn,10) %>%
+  kbl(caption = "Top significant pathways with lower methylation") %>%
+  kable_paper("hover", full_width = F)
+
+```
+
+Now make a barplot of these top findings.
+
+```{r, reactome_barplot}
+
+top <- rbind(up[1:10,],dn[1:10,])
+top <- top[order(top$s.dist),]
+
+barnames <- gsub("_"," ",top$set)
+cols <- as.character(((sign(top$s.dist)+1)/2)+1)
+cols <- gsub("1","blue",gsub("2","red",cols))
+
+par(mar = c(5.1, 29.1, 4.1, 2.1))
+barplot(abs(top$s.dist),horiz=TRUE,las=1,names.arg=barnames, cex.names=0.8,
+  cex.axis=0.8,col=cols, xlab="Enrichment score",main="Reactomes")
+mtext("whole gene")
+grid()
+
+par( mar = c(5.1, 4.1, 4.1, 2.1) )
+
+```
+
+### GO Biological Process
+
+GOBP is a larger annotation set.
+
+```{r,gobp1}
+
+mres2 <- mitch_calc(x=m,genesets=gobp,minsetsize=5, priority="effect",cores=8)
+
+mtable2 <- mres2$enrichment_result
+up <- subset(mtable2,s.dist>0 & p.adjustANOVA<0.05)
+dn <- subset(mtable2,s.dist<0 & p.adjustANOVA<0.05)
+nrow(up)
+nrow(dn)
+
+head(up,10) %>%
+  kbl(caption = "Top significant GO BPs with higher methylation") %>%
+  kable_paper("hover", full_width = F)
+
+head(dn,10) %>%
+  kbl(caption = "Top significant GO BPs with lower methylation") %>%
+  kable_paper("hover", full_width = F)
+
+```
+
+These results are more interesting than the reactome ones.
+
+Now make a barplot of these top findings.
+
+```{r, gobp_barplot}
+
+top <- rbind(up[1:10,],dn[1:10,])
+top <- top[order(top$s.dist),]
+
+barnames <- gsub("_"," ",top$set)
+cols <- as.character(((sign(top$s.dist)+1)/2)+1)
+cols <- gsub("1","blue",gsub("2","red",cols))
+
+par(mar = c(5.1, 29.1, 4.1, 2.1))
+barplot(abs(top$s.dist),horiz=TRUE,las=1,names.arg=barnames, cex.names=0.8,
+  cex.axis=0.8,col=cols, xlab="Enrichment score",main="GO Biological Processes")
+mtext("whole gene")
+grid()
+
+par( mar = c(5.1, 4.1, 4.1, 2.1) )
+
+```
+
+### Transcription factor targets
+
+Might give some clues about potential mechanisms.
+
+```{r,tft1}
+
+mres3 <- mitch_calc(x=m,genesets=tft,minsetsize=5, priority="effect",cores=8)
+
+mtable3 <- mres3$enrichment_result
+up <- subset(mtable3,s.dist>0 & p.adjustANOVA<0.05)
+dn <- subset(mtable3,s.dist<0 & p.adjustANOVA<0.05)
+nrow(up)
+nrow(dn)
+
+head(up,10) %>%
+  kbl(caption = "Top significant GO BPs with higher methylation") %>%
+  kable_paper("hover", full_width = F)
+
+head(dn,10) %>%
+  kbl(caption = "Top significant GO BPs with lower methylation") %>%
+  kable_paper("hover", full_width = F)
+
+```
+
+Now make a barplot of these top findings.
+
+```{r, tft_barplot}
+
+top <- rbind(up[1:10,],dn[1:10,])
+top <- top[order(top$s.dist),]
+
+barnames <- gsub("_"," ",top$set)
+cols <- as.character(((sign(top$s.dist)+1)/2)+1)
+cols <- gsub("1","blue",gsub("2","red",cols))
+
+par(mar = c(5.1, 29.1, 4.1, 2.1))
+barplot(abs(top$s.dist),horiz=TRUE,las=1,names.arg=barnames, cex.names=0.8,
+  cex.axis=0.8,col=cols, xlab="Enrichment score",main="GO Biological Processes")
+mtext("whole gene")
+grid()
+
+par( mar = c(5.1, 4.1, 4.1, 2.1) )
+
+```
+
+## Output reports and charts
+
+Make a html report and some charts.
+
+```{r,reports}
+
+mitch_report(res=mres1,outfile="reactome_mitchreport.html",overwrite=TRUE)
+mitch_plots(res=mres1,outfile="reactome_mitchcharts.pdf")
+
+mitch_report(res=mres2,outfile="gobp_mitchreport.html",overwrite=TRUE)
+mitch_plots(res=mres2,outfile="gobp_mitchcharts.pdf")
+
+mitch_report(res=mres3,outfile="tft_mitchreport.html",overwrite=TRUE)
+mitch_plots(res=mres3,outfile="tft_mitchcharts.pdf")
+
+```
+
+## Session information
+
+```{r,save}
+
+sessionInfo()
+
+```
