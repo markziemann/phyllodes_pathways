@@ -27,6 +27,7 @@ targets from MsigDB.
 Load packages.
 
 Important: ensure that the mitch version used is 1.15.0 (patched), 1.15.1 or higher.
+
 # devtools::install_github("markziemann/mitch") #get devel mitch
 
 ```{r,packages}
@@ -73,7 +74,7 @@ reactome <- gmt_import("ReactomePathways_2024-03-10.gmt")
 
 gobp <- gmt_import("c5.go.v2023.2.Hs.symbols.gmt")
 gobp <- gobp[grep("GOBP_",names(gobp))]
-names(gobp) <- gsub("_","",gsub("GOBP_","",names(gobp)))
+names(gobp) <- gsub("_"," ",gsub("GOBP_","",names(gobp)))
 
 tft <- gmt_import("c3.tft.gtrd.v2023.2.Hs.symbols.gmt")
 names(tft) <- gsub("_"," ",names(tft))
@@ -120,8 +121,6 @@ str(gt)
 
 The first part is to import the data into mitch.
 
-This only works properly when mitch's mapGeneIds function uses `mean` to aggregate (line 69 of mitch.R).
-
 ```{r,mg1}
 
 m <- mitch_import(x=dm,DEtype="limma",geneTable=gt)
@@ -140,6 +139,9 @@ I think this works better for interpretation.
 ### Reactome
 
 Reactome is the first analysis.
+
+The S distance is the enrichment score, which 0 means no chance and has a maximum of +1 and minimum
+of -1.
 
 ```{r,reactome1}
 
@@ -184,6 +186,8 @@ par( mar = c(5.1, 4.1, 4.1, 2.1) )
 ### GO Biological Process
 
 GOBP is a larger annotation set.
+
+It looks like defensins are increased in methylation, while some lipid processes are reduced.
 
 ```{r,gobp1}
 
@@ -231,6 +235,8 @@ par( mar = c(5.1, 4.1, 4.1, 2.1) )
 
 Might give some clues about potential mechanisms.
 
+RBMX and NEUROD are interesting, but they are relatively small sets, however NFKBIA is more interesting.
+
 ```{r,tft1}
 
 mres3 <- mitch_calc(x=m,genesets=tft,minsetsize=5, priority="effect",cores=8)
@@ -242,11 +248,11 @@ nrow(up)
 nrow(dn)
 
 head(up,10) %>%
-  kbl(caption = "Top significant GO BPs with higher methylation") %>%
+  kbl(caption = "Top significant transcription factor target sets with higher methylation") %>%
   kable_paper("hover", full_width = F)
 
 head(dn,10) %>%
-  kbl(caption = "Top significant GO BPs with lower methylation") %>%
+  kbl(caption = "Top significant transcription factor target sets with lower methylation") %>%
   kable_paper("hover", full_width = F)
 
 ```
@@ -264,7 +270,7 @@ cols <- gsub("1","blue",gsub("2","red",cols))
 
 par(mar = c(5.1, 29.1, 4.1, 2.1))
 barplot(abs(top$s.dist),horiz=TRUE,las=1,names.arg=barnames, cex.names=0.8,
-  cex.axis=0.8,col=cols, xlab="Enrichment score",main="GO Biological Processes")
+  cex.axis=0.8,col=cols, xlab="Enrichment score",main="Transcription factor target sets")
 grid()
 
 par( mar = c(5.1, 4.1, 4.1, 2.1) )
@@ -277,13 +283,13 @@ Make a html report and some charts.
 
 ```{r,reports}
 
-mitch_report(res=mres1,outfile="reactome_mitchreport.html",overwrite=TRUE)
+mitch_report(res=mres1,outfile="reactome_mitchreport.html",overwrite=false)
 mitch_plots(res=mres1,outfile="reactome_mitchcharts.pdf")
 
-mitch_report(res=mres2,outfile="gobp_mitchreport.html",overwrite=TRUE)
+mitch_report(res=mres2,outfile="gobp_mitchreport.html",overwrite=false)
 mitch_plots(res=mres2,outfile="gobp_mitchcharts.pdf")
 
-mitch_report(res=mres3,outfile="tft_mitchreport.html",overwrite=TRUE)
+mitch_report(res=mres3,outfile="tft_mitchreport.html",overwrite=false)
 mitch_plots(res=mres3,outfile="tft_mitchcharts.pdf")
 
 ```
